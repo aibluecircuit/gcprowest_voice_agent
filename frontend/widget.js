@@ -12,7 +12,7 @@ let isPlaying = false;
 let startTime = 0;
 
 // Config - Replace with your deployed backend URL in production
-const BACKEND_URL = 'wss://gcprowest-agent.onrender.com';
+const BACKEND_URL = 'wss://gcprowest-voice-agent.onrender.com';
 
 
 async function initCall() {
@@ -89,14 +89,9 @@ async function startRecording() {
 
     audioWorkletNode.port.onmessage = (event) => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            // Send audio data to backend
-            // Basic framing for our simple protocol: just raw bytes or JSON?
-            // Google Gemini API expects specific JSON frames. 
-            // We will send raw audio in base64 via JSON to our backend, 
-            // or binary if our backend handles it.
-            // Let's send a JSON object wrapped in a string to our backend, which relays it.
-
-            const base64Audio = arrayBufferToBase64(event.data);
+            // Convert Float32 to Int16 PCM
+            const pcm16 = floatTo16BitPCM(event.data);
+            const base64Audio = arrayBufferToBase64(pcm16);
             ws.send(JSON.stringify({
                 type: 'audio',
                 data: base64Audio
@@ -105,10 +100,18 @@ async function startRecording() {
     };
 
     source.connect(audioWorkletNode);
-    audioWorkletNode.connect(audioContext.destination); // Connect to dest to kep alive, muting output if needed? 
-    // Actually, we don't want to hear ourselves. 
-    // audioWorkletNode.connect(audioContext.destination); -> This might cause feedback.
-    // Usually worklets don't need output unless processing.
+    audioWorkletNode.connect(audioContext.destination);
+}
+
+function floatTo16BitPCM(float32Array) {
+    const buffer = new ArrayBuffer(float32Array.length * 2);
+    const view = new DataView(buffer);
+    for (let i = 0; i < float32Array.length; i++) {
+        let s = Math.max(-1, Math.min(1, float32Array[i]));
+        s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        view.setInt16(i * 2, s, true);
+    }
+    return buffer;
 }
 
 function handleServerMessage(event) {

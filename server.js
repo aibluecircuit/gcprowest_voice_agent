@@ -99,6 +99,17 @@ CLOSING
             }
         };
         ws_gemini.send(JSON.stringify(setupMessage));
+
+        const initialTrigger = {
+            clientContent: {
+                turns: [{
+                    role: "user",
+                    parts: [{ text: "The user has connected. Say your opening greeting now." }]
+                }],
+                turnComplete: true
+            }
+        };
+        ws_gemini.send(JSON.stringify(initialTrigger));
     });
 
     ws_gemini.on('message', (data) => {
