@@ -16,7 +16,7 @@ if (!API_KEY) {
     console.warn("WARNING: GOOGLE_API_KEY is not set in .env");
 }
 
-app.use(express.static('../frontend')); // Serve frontend for testing
+app.use(express.static('frontend')); // Serve frontend for testing
 
 app.get('/', (req, res) => {
     res.send('GC Pro West Voice Agent Backend is running. Frontend available at /index.html');
