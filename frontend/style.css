@@ -1,0 +1,118 @@
+/* Font and Colors */
+:root {
+    --gcp-gold: #c5a059; /* Approximate gold color from site */
+    --gcp-black: #1a1a1a;
+    --gcp-white: #ffffff;
+    --gcp-gray: #f4f4f4;
+}
+
+body {
+    margin: 0;
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Floating Button */
+#voice-agent-fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    background-color: var(--gcp-black);
+    color: var(--gcp-gold);
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1000;
+    transition: transform 0.3s ease;
+}
+
+#voice-agent-fab:hover {
+    transform: scale(1.05);
+}
+
+#voice-agent-fab svg {
+    width: 30px;
+    height: 30px;
+    fill: currentColor;
+}
+
+/* Active Call Card */
+#voice-agent-card {
+    position: fixed;
+    bottom: 90px;
+    right: 20px;
+    width: 320px;
+    background-color: var(--gcp-white);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    padding: 24px;
+    display: none; /* Hidden by default */
+    font-family: 'Outfit', sans-serif;
+    z-index: 1000;
+    text-align: center;
+    border: 1px solid #e0e0e0;
+}
+
+#voice-agent-card.active {
+    display: block;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.agent-status {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 16px;
+    font-weight: 500;
+}
+
+.visualizer-container {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-bottom: 20px;
+}
+
+.vis-bar {
+    width: 6px;
+    height: 10px;
+    background-color: var(--gcp-black);
+    border-radius: 3px;
+    animation: pulse 1s infinite ease-in-out;
+}
+
+.vis-bar:nth-child(2) { animation-delay: 0.1s; }
+.vis-bar:nth-child(3) { animation-delay: 0.2s; }
+.vis-bar:nth-child(4) { animation-delay: 0.3s; }
+.vis-bar:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes pulse {
+    0%, 100% { height: 10px; opacity: 0.6; }
+    50% { height: 30px; opacity: 1; background-color: var(--gcp-gold); }
+}
+
+/* Stop Button */
+#voice-agent-stop-btn {
+    background-color: #ff4d4d;
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#voice-agent-stop-btn:hover {
+    background-color: #e03e3e;
+}
