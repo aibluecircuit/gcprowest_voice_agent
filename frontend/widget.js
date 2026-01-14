@@ -6,7 +6,7 @@ widgetContainer.innerHTML += `
 </div>
 <div id="voice-agent-card">
     <div class="agent-header">
-        <img src="agent.png" class="agent-avatar" alt="Agent">
+        <img src="${ASSET_URL}/agent.png" class="agent-avatar" alt="Agent">
         <div class="agent-info">
             <div class="agent-name">Andy</div>
             <div class="agent-status" style="font-size: 0.8em; color: #eee;">Voice AI Assistant</div>
@@ -50,7 +50,7 @@ let serverFinishedGenerating = false;
 // Config - Dynamic URL (Local vs Production)
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const BACKEND_URL = isLocal ? 'ws://localhost:8080' : 'wss://gcprowest-voice-agent.onrender.com';
-
+const ASSET_URL = isLocal ? '' : 'https://gcprowest-voice-agent.onrender.com';
 
 async function initCall() {
     try {
@@ -63,7 +63,7 @@ async function initCall() {
         await audioContext.resume();
 
         // 2. Load AudioWorklet
-        const processorUrl = window.VOICE_AGENT_PROCESSOR_URL || 'audio-processor.js';
+        const processorUrl = window.VOICE_AGENT_PROCESSOR_URL || `${ASSET_URL}/audio-processor.js`;
         try {
             await audioContext.audioWorklet.addModule(processorUrl);
         } catch (e) {
