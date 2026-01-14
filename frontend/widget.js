@@ -1,3 +1,35 @@
+// Inject HTML structure
+const widgetContainer = document.getElementById('voice-agent-widget-container') || document.body;
+widgetContainer.innerHTML += `
+<div id="voice-agent-fab">
+    <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+</div>
+<div id="voice-agent-card">
+    <div class="agent-header">
+        <img src="agent.png" class="agent-avatar" alt="Agent">
+        <div class="agent-info">
+            <div class="agent-name">Sarah</div>
+            <div class="agent-status">Ready</div>
+        </div>
+    </div>
+    
+    <div id="chat-history">
+        <div class="chat-message agent">Welcome to GC Pro West. How can I help you today?</div>
+    </div>
+
+    <div class="visualizer-container">
+        <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+    </div>
+
+    <div class="input-area">
+        <input type="text" id="chat-input" placeholder="Type a message...">
+        <button id="send-btn">➤</button>
+    </div>
+
+    <button id="voice-agent-stop-btn">End Call</button>
+</div>
+`;
+
 const FAB = document.getElementById('voice-agent-fab');
 const CARD = document.getElementById('voice-agent-card');
 const STOP_BTN = document.getElementById('voice-agent-stop-btn');
@@ -11,7 +43,11 @@ let responseQueue = [];
 let isPlaying = false;
 let startTime = 0;
 
-// Config - Replace with your deployed backend URL in production
+// State flags for Echo Suppression
+let isAgentTurn = false;
+let serverFinishedGenerating = false;
+
+// Config - Production URL (Render)
 const BACKEND_URL = 'wss://gcprowest-voice-agent.onrender.com';
 
 
@@ -21,7 +57,9 @@ async function initCall() {
         STATUS_TEXT.style.color = "#666";
 
         // 1. Setup Audio Context
-        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        // Use 16kHz for best compatibility with Speech-to-Text models
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        await audioContext.resume();
 
         // 2. Load AudioWorklet
         const processorUrl = window.VOICE_AGENT_PROCESSOR_URL || 'audio-processor.js';
@@ -36,7 +74,17 @@ async function initCall() {
 
         ws.onopen = () => {
             console.log("WebSocket connected");
+            STATUS_TEXT.textContent = "Waiting for agent...";
             startRecording();
+
+            // Auto-disconnect after 2 minutes (120 seconds)
+            setTimeout(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log("Max conversation time reached. Disconnecting.");
+                    stopCall(); // consistently use stopCall() instead of endCall()
+                    addChatMessage("System: Call ended (2 min limit reached).", 'agent');
+                }
+            }, 120000);
         };
 
         ws.onmessage = handleServerMessage;
@@ -57,6 +105,10 @@ async function initCall() {
 
         CARD.classList.add('active');
         FAB.style.display = 'none';
+
+        // Reset flags
+        isAgentTurn = false;
+        serverFinishedGenerating = false;
 
     } catch (err) {
         console.error("Init Error:", err);
@@ -89,8 +141,31 @@ async function startRecording() {
 
     audioWorkletNode.port.onmessage = (event) => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            // Convert Float32 to Int16 PCM
-            const pcm16 = floatTo16BitPCM(event.data);
+
+            // Simple Echo Suppression: If playing, mute.
+            if (isPlaying) return;
+
+            const pcm16 = event.data;
+
+            // Visualizer feedback logic
+            let sum = 0;
+            const int16Data = new Int16Array(pcm16);
+            for (let i = 0; i < int16Data.length; i++) {
+                const floatVal = int16Data[i] / 32768.0;
+                sum += floatVal * floatVal;
+            }
+            const rms = Math.sqrt(sum / int16Data.length);
+
+            const bars = document.querySelectorAll('.vis-bar');
+            const vol = Math.min(1, rms * 10);
+            bars.forEach(bar => {
+                bar.style.height = (5 + vol * 20) + 'px';
+                bar.style.background = '#0f9d58';
+            });
+
+            // NO Threshold check anymore. Send everything.
+            // If it's silence, Gemini will handle it.
+
             const base64Audio = arrayBufferToBase64(pcm16);
             ws.send(JSON.stringify({
                 type: 'audio',
@@ -114,22 +189,50 @@ function floatTo16BitPCM(float32Array) {
     return buffer;
 }
 
+// Helpers
+function addChatMessage(text, sender) {
+    const history = document.getElementById('chat-history');
+    const msg = document.createElement('div');
+    msg.className = `chat-message ${sender}`;
+    msg.textContent = text;
+    history.appendChild(msg);
+    history.scrollTop = history.scrollHeight;
+}
+
+function sendTextMessage() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    addChatMessage(text, 'user');
+    console.log("Sending text to server:", text);
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'text',
+            text: text
+        }));
+    }
+    input.value = '';
+}
+
+// Add Listeners
+document.getElementById('send-btn').addEventListener('click', sendTextMessage);
+document.getElementById('chat-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendTextMessage();
+});
+
+// Update handleServerMessage to show text
+// Update handleServerMessage to show text
 function handleServerMessage(event) {
     const data = JSON.parse(event.data);
-
     if (data.type === 'audio') {
-        // Queue audio for playback
-        responseQueue.push(data.data); // Expecting base64
-        if (!isPlaying) {
-            playNextChunk();
-        }
-    } else if (data.type === 'interrupted') {
-        // Clear queue if AI was interrupted
-        responseQueue = [];
-        isPlaying = false;
+        responseQueue.push(data.data);
+        if (!isPlaying) playNextChunk();
     }
     else if (data.type === 'text') {
-        console.log("AI:", data.text);
+        // Show AI text in chat
+        addChatMessage(data.text, 'agent');
     }
 }
 
@@ -140,7 +243,7 @@ async function playNextChunk() {
         return;
     }
 
-    isPlaying = true;
+    isPlaying = true; // Lock mic
     STATUS_TEXT.textContent = "Speaking...";
     const base64 = responseQueue.shift();
     const audioBuffer = await decodeAudio(base64);
@@ -162,11 +265,6 @@ function decodeAudio(base64) {
     for (let i = 0; i < len; i++) {
         bytes[i] = binaryString.charCodeAt(i);
     }
-    // We assume backend sends PCM16 24kHz or similar, or WAV. 
-    // If raw PCM, we need to manually create buffer.
-    // If backend sends standard WAV container, decodeAudioData works.
-    // For simplicity, let's assume backend converts to WAV or sends valid format.
-    // Actually, Gemini sends PCM. We need to create an AudioBuffer.
 
     // float32 conversion from int16
     const int16 = new Int16Array(bytes.buffer);
@@ -175,7 +273,7 @@ function decodeAudio(base64) {
         float32[i] = int16[i] / 32768;
     }
 
-    const buffer = audioContext.createBuffer(1, float32.length, 24000);
+    const buffer = audioContext.createBuffer(1, float32.length, 24000); // Gemini is usually 24kHz
     buffer.getChannelData(0).set(float32);
     return buffer;
 }
@@ -183,16 +281,16 @@ function decodeAudio(base64) {
 
 function stopCall() {
     if (stream) stream.getTracks().forEach(track => track.stop());
-    if (audioContext) audioContext.close();
+    if (audioContext && audioContext.state !== 'closed') audioContext.close();
     if (ws) ws.close();
 
     CARD.classList.remove('active');
     FAB.style.display = 'flex';
     responseQueue = [];
     isPlaying = false;
+    isAgentTurn = false;
 }
 
-// Helpers
 function arrayBufferToBase64(buffer) {
     let binary = '';
     const bytes = new Uint8Array(buffer);
@@ -203,6 +301,7 @@ function arrayBufferToBase64(buffer) {
     return window.btoa(binary);
 }
 
-// Event Listeners
+// Main Entry Points
 FAB.addEventListener('click', initCall);
 STOP_BTN.addEventListener('click', stopCall);
+

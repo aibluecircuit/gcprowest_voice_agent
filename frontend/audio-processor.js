@@ -3,7 +3,23 @@ class AudioProcessor extends AudioWorkletProcessor {
         const input = inputs[0];
         if (input.length > 0) {
             const float32Data = input[0];
-            const int16Data = this.float32ToInt16(float32Data);
+            const targetRate = 16000;
+            const currentRate = sampleRate; // Global in AudioWorklet
+
+            let finalData = float32Data;
+
+            // Simple Downsampling (Decimation)
+            if (currentRate > targetRate) {
+                const ratio = Math.floor(currentRate / targetRate);
+                const newLength = Math.floor(float32Data.length / ratio);
+                const downsampled = new Float32Array(newLength);
+                for (let i = 0; i < newLength; i++) {
+                    downsampled[i] = float32Data[i * ratio];
+                }
+                finalData = downsampled;
+            }
+
+            const int16Data = this.float32ToInt16(finalData);
             this.port.postMessage(int16Data.buffer, [int16Data.buffer]);
         }
         return true;
