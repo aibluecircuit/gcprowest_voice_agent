@@ -12,7 +12,9 @@ if (!fs.existsSync('./service-account.json') && process.env.SERVICE_ACCOUNT_JSON
     fs.writeFileSync('./service-account.json', process.env.SERVICE_ACCOUNT_JSON);
 }
 
+const cors = require('cors');
 const app = express();
+app.use(cors()); // Enable CORS for all routes (important for Worklet loading from external sites)
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
