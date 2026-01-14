@@ -261,30 +261,8 @@ Today's date is ${new Date().toISOString().split('T')[0]}. Use this as the refer
                         });
                         console.log("3. Booking success! Sending email...");
 
-                        // Send Confirmation Email
-                        const nodemailer = require('nodemailer');
-                        const transporter = nodemailer.createTransport({
-                            service: 'gmail',
-                            auth: {
-                                user: process.env.GMAIL_USER,
-                                pass: process.env.GMAIL_APP_PASSWORD
-                            }
-                        });
-
-                        const mailOptions = {
-                            from: `"GC Pro West AI" <${process.env.GMAIL_USER}>`,
-                            to: process.env.GMAIL_USER, // Sending to self/admin for now as we don't ask customer email yet. Ideally ask for it.
-                            subject: `New Appointment: ${name}`,
-                            text: `New appointment booked.\n\nName: ${name}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time}`
-                        };
-
-                        transporter.sendMail(mailOptions, function (error, info) {
-                            if (error) {
-                                console.log('Email Error:', error);
-                            } else {
-                                console.log('Email sent: ' + info.response);
-                            }
-                        });
+                        // Email removed as per user request
+                        console.log("3. Booking success!");
 
                         console.log("3. Booking success!");
 
