@@ -1,7 +1,6 @@
 const WebSocket = require('ws');
 
-const PORT = 8084;
-const WS_URL = `ws://localhost:${PORT}`;
+const WS_URL = 'wss://gcprowest-voice-agent.onrender.com';
 
 console.log(`Connecting to ${WS_URL}...`);
 const ws = new WebSocket(WS_URL);
