@@ -56,7 +56,7 @@ wss.on('connection', (ws_client) => {
             setup: {
                 model: MODEL,
                 generationConfig: {
-                    responseModalities: ["AUDIO"],
+                    responseModalities: ["AUDIO", "TEXT"],
                     speechConfig: {
                         voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
                     }
