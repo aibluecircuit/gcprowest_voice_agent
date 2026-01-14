@@ -286,23 +286,6 @@ Today's date is ${new Date().toISOString().split('T')[0]}. Use this as the refer
                             }
                         });
 
-                        // Send Confirmation SMS
-                        const twilio = require('twilio');
-                        const accountSid = process.env.TWILIO_ACCOUNT_SID;
-                        const authToken = process.env.TWILIO_AUTH_TOKEN;
-                        const client = new twilio(accountSid, authToken);
-
-                        try {
-                            const message = await client.messages.create({
-                                body: `GC Pro West: Appointment Confirmed!\nTime: ${date} at ${time}. See you at ${address}.`,
-                                from: process.env.TWILIO_PHONE_NUMBER,
-                                to: phone
-                            });
-                            console.log("SMS sent: " + message.sid);
-                        } catch (smsError) {
-                            console.error("SMS Error:", smsError.message);
-                        }
-
                         console.log("3. Booking success!");
 
                         result = { status: "confirmed", link: insertRes.data.htmlLink };
