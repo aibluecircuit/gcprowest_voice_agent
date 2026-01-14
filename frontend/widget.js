@@ -1,3 +1,8 @@
+// Config - Dynamic URL (Local vs Production)
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const BACKEND_URL = isLocal ? 'ws://localhost:8080' : 'wss://gcprowest-voice-agent.onrender.com';
+const ASSET_URL = isLocal ? '' : 'https://gcprowest-voice-agent.onrender.com';
+
 // Inject HTML structure
 const widgetContainer = document.getElementById('voice-agent-widget-container') || document.body;
 widgetContainer.innerHTML += `
@@ -47,10 +52,6 @@ let startTime = 0;
 let isAgentTurn = false;
 let serverFinishedGenerating = false;
 
-// Config - Dynamic URL (Local vs Production)
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const BACKEND_URL = isLocal ? 'ws://localhost:8080' : 'wss://gcprowest-voice-agent.onrender.com';
-const ASSET_URL = isLocal ? '' : 'https://gcprowest-voice-agent.onrender.com';
 
 async function initCall() {
     try {
