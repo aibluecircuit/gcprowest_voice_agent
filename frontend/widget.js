@@ -6,6 +6,9 @@ const ASSET_URL = isLocal ? '' : 'https://gcprowest-voice-agent.onrender.com';
 // Inject HTML structure
 const widgetContainer = document.getElementById('voice-agent-widget-container') || document.body;
 widgetContainer.innerHTML += `
+<div id="voice-agent-fab-avatar" style="display: flex;">
+    <img src="${ASSET_URL}/agent.png" alt="Andy">
+</div>
 <div id="voice-agent-fab">
     <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
 </div>
@@ -36,6 +39,7 @@ widgetContainer.innerHTML += `
 `;
 
 const FAB = document.getElementById('voice-agent-fab');
+const FAB_AVATAR = document.getElementById('voice-agent-fab-avatar');
 const CARD = document.getElementById('voice-agent-card');
 const STOP_BTN = document.getElementById('voice-agent-stop-btn');
 const STATUS_TEXT = document.querySelector('.agent-status');
@@ -107,6 +111,7 @@ async function initCall() {
 
         CARD.classList.add('active');
         FAB.style.display = 'none';
+        if (FAB_AVATAR) FAB_AVATAR.style.display = 'none';
 
         // Reset flags
         isAgentTurn = false;
@@ -288,6 +293,7 @@ function stopCall() {
 
     CARD.classList.remove('active');
     FAB.style.display = 'flex';
+    if (FAB_AVATAR) FAB_AVATAR.style.display = 'flex';
     responseQueue = [];
     isPlaying = false;
     isAgentTurn = false;
@@ -305,5 +311,6 @@ function arrayBufferToBase64(buffer) {
 
 // Main Entry Points
 FAB.addEventListener('click', initCall);
+if (FAB_AVATAR) FAB_AVATAR.addEventListener('click', initCall); // Also trigger call on avatar click
 STOP_BTN.addEventListener('click', stopCall);
 

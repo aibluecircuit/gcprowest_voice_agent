@@ -1,0 +1,477 @@
+<!-- GC Pro West AI Voice Agent - Squarespace Integration -->
+<!-- Paste this code into Settings > Advanced > Code Injection > Footer -->
+
+<!-- 1. Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- 2. Styles -->
+<style>
+    /* Font and Colors */
+    :root {
+        --gcp-gold: #c5a059;
+        --gcp-black: #1a1a1a;
+        --gcp-white: #ffffff;
+        --gcp-gray: #f4f4f4;
+    }
+
+    /* Floating Button */
+    #voice-agent-fab {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        background-color: var(--gcp-black);
+        color: var(--gcp-gold);
+        border-radius: 50%;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 10000;
+        transition: transform 0.3s ease;
+    }
+
+    #voice-agent-fab:hover {
+        transform: scale(1.05);
+    }
+
+    #voice-agent-fab-avatar {
+        position: fixed;
+        bottom: 90px;
+        right: 25px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        z-index: 10000;
+        cursor: pointer;
+        overflow: hidden;
+        border: 3px solid var(--gcp-white);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        background-color: var(--gcp-white);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    #voice-agent-fab-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    #voice-agent-fab svg {
+        width: 30px;
+        height: 30px;
+        fill: currentColor;
+    }
+
+    /* Active Call Card */
+    #voice-agent-card {
+        position: fixed;
+        bottom: 90px;
+        right: 20px;
+        width: 350px;
+        height: 500px;
+        background-color: var(--gcp-white);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        padding: 0;
+        display: none;
+        font-family: 'Outfit', sans-serif;
+        z-index: 10000;
+        border: 1px solid #e0e0e0;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    #voice-agent-card.active {
+        display: flex;
+        animation: gcpSlideIn 0.3s ease-out;
+    }
+
+    @keyframes gcpSlideIn {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Header */
+    .agent-header {
+        padding: 16px;
+        background: var(--gcp-gray);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .agent-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid var(--gcp-gold);
+    }
+
+    .agent-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .agent-name {
+        font-weight: 700;
+        color: var(--gcp-black);
+    }
+
+    /* Chat History */
+    #chat-history {
+        flex: 1;
+        padding: 16px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: #fff;
+    }
+
+    .chat-message {
+        max-width: 80%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.4;
+    }
+
+    .chat-message.agent {
+        align-self: flex-start;
+        background: #f0f0f0;
+        color: #333;
+        border-bottom-left-radius: 2px;
+    }
+
+    .chat-message.user {
+        align-self: flex-end;
+        background: var(--gcp-gold);
+        color: #fff;
+        border-bottom-right-radius: 2px;
+    }
+
+    /* Visualizer */
+    .visualizer-container {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        background: #fafafa;
+        border-top: 1px solid #eee;
+    }
+
+    .vis-bar {
+        width: 4px;
+        height: 10px;
+        background-color: #ccc;
+        border-radius: 3px;
+        transition: height 0.1s;
+    }
+
+    /* Input Area */
+    .input-area {
+        padding: 10px;
+        display: flex;
+        gap: 8px;
+        border-top: 1px solid #eee;
+        background: #fff;
+    }
+
+    #chat-input {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 20px;
+        outline: none;
+        font-family: inherit;
+    }
+
+    #send-btn {
+        background: var(--gcp-black);
+        color: var(--gcp-gold);
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Stop Button */
+    #voice-agent-stop-btn {
+        width: 100%;
+        background-color: #ff4d4d;
+        color: white;
+        border: none;
+        padding: 12px;
+        text-transform: uppercase;
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+        letter-spacing: 1px;
+    }
+</style>
+
+<!-- 3. HTML Structure -->
+<div id="voice-agent-fab-avatar">
+    <img src="https://gcprowest-voice-agent.onrender.com/agent.png" alt="Andy">
+</div>
+<div id="voice-agent-fab">
+    <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+</div>
+<div id="voice-agent-card">
+    <div class="agent-header">
+        <img src="https://gcprowest-voice-agent.onrender.com/agent.png" class="agent-avatar" alt="Agent">
+        <div class="agent-info">
+            <div class="agent-name">Andy</div>
+            <div class="agent-status" style="font-size: 0.8em; color: #666;">Voice AI Assistant</div>
+        </div>
+    </div>
+    
+    <div id="chat-history">
+        <div class="chat-message agent">Welcome to GC Pro West. How can I help you today?</div>
+    </div>
+
+    <div class="visualizer-container">
+        <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+    </div>
+
+    <div class="input-area">
+        <input type="text" id="chat-input" placeholder="Type a message...">
+        <button id="send-btn">➤</button>
+    </div>
+
+    <button id="voice-agent-stop-btn">End Call</button>
+</div>
+
+<!-- 4. Logic -->
+<script>
+(function() {
+    const BACKEND_URL = 'wss://gcprowest-voice-agent.onrender.com';
+    const ASSET_URL = 'https://gcprowest-voice-agent.onrender.com';
+    const PROCESSOR_URL = `${ASSET_URL}/audio-processor.js`;
+
+    const FAB = document.getElementById('voice-agent-fab');
+    const FAB_AVATAR = document.getElementById('voice-agent-fab-avatar');
+    const CARD = document.getElementById('voice-agent-card');
+    const STOP_BTN = document.getElementById('voice-agent-stop-btn');
+    const STATUS_TEXT = document.querySelector('#voice-agent-card .agent-status');
+    const SEND_BTN = document.getElementById('send-btn');
+    const CHAT_INPUT = document.getElementById('chat-input');
+    const CHAT_HISTORY = document.getElementById('chat-history');
+
+    let audioContext;
+    let ws;
+    let stream;
+    let audioWorkletNode;
+    let responseQueue = [];
+    let isPlaying = false;
+
+    async function initCall() {
+        try {
+            console.log("Initializing AI Agent...");
+            if (audioContext && audioContext.state !== 'closed') {
+                await audioContext.close();
+            }
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            await audioContext.resume();
+
+            try {
+                await audioContext.audioWorklet.addModule(PROCESSOR_URL);
+            } catch (e) {
+                console.error("Audio Processor Error:", e);
+                alert("Failed to load audio processor. Please check your connection.");
+                return;
+            }
+
+            ws = new WebSocket(BACKEND_URL);
+
+            ws.onopen = () => {
+                console.log("Connected to AI Backend");
+                STATUS_TEXT.textContent = "Listening...";
+                startRecording();
+            };
+
+            ws.onmessage = handleServerMessage;
+
+            ws.onclose = (e) => {
+                console.log("WebSocket Closed", e);
+                stopCall();
+            };
+
+            ws.onerror = (e) => {
+                console.error("WebSocket Error:", e);
+                STATUS_TEXT.textContent = "Connection Error";
+            };
+
+            CARD.classList.add('active');
+            FAB.style.display = 'none';
+            if (FAB_AVATAR) FAB_AVATAR.style.display = 'none';
+
+        } catch (err) {
+            console.error("Init Error:", err);
+            alert("Microphone access is required for the voice assistant.");
+        }
+    }
+
+    async function startRecording() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    autoGainControl: true,
+                    noiseSuppression: true
+                }
+            });
+
+            const source = audioContext.createMediaStreamSource(stream);
+            audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-processor');
+
+            audioWorkletNode.port.onmessage = (event) => {
+                if (ws && ws.readyState === WebSocket.OPEN && !isPlaying) {
+                    const pcm16 = event.data;
+                    
+                    // Visualizer Logic
+                    let sum = 0;
+                    const int16Data = new Int16Array(pcm16);
+                    for (let i = 0; i < int16Data.length; i++) {
+                        const floatVal = int16Data[i] / 32768.0;
+                        sum += floatVal * floatVal;
+                    }
+                    const rms = Math.sqrt(sum / int16Data.length);
+                    const bars = document.querySelectorAll('.vis-bar');
+                    const vol = Math.min(1, rms * 10);
+                    bars.forEach(bar => {
+                        bar.style.height = (5 + vol * 20) + 'px';
+                        bar.style.background = '#0f9d58';
+                    });
+
+                    ws.send(JSON.stringify({
+                        type: 'audio',
+                        data: arrayBufferToBase64(pcm16)
+                    }));
+                }
+            };
+
+            source.connect(audioWorkletNode);
+            audioWorkletNode.connect(audioContext.destination);
+        } catch (e) {
+            console.error("Mic Error:", e);
+        }
+    }
+
+    function handleServerMessage(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'audio') {
+            responseQueue.push(data.data);
+            if (!isPlaying) playNextChunk();
+        } else if (data.type === 'text') {
+            addChatMessage(data.text, 'agent');
+        }
+    }
+
+    async function playNextChunk() {
+        if (responseQueue.length === 0) {
+            isPlaying = false;
+            STATUS_TEXT.textContent = "Listening...";
+            return;
+        }
+
+        isPlaying = true;
+        STATUS_TEXT.textContent = "Speaking...";
+        const base64 = responseQueue.shift();
+        const audioBuffer = await decodeAudio(base64);
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start();
+
+        source.onended = () => {
+            playNextChunk();
+        };
+    }
+
+    async function decodeAudio(base64) {
+        const binaryString = window.atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+            float32[i] = int16[i] / 32768;
+        }
+
+        const buffer = audioContext.createBuffer(1, float32.length, 24000);
+        buffer.getChannelData(0).set(float32);
+        return buffer;
+    }
+
+    function addChatMessage(text, sender) {
+        const msg = document.createElement('div');
+        msg.className = `chat-message ${sender}`;
+        msg.textContent = text;
+        CHAT_HISTORY.appendChild(msg);
+        CHAT_HISTORY.scrollTop = CHAT_HISTORY.scrollHeight;
+    }
+
+    function sendTextMessage() {
+        const text = CHAT_INPUT.value.trim();
+        if (!text) return;
+
+        addChatMessage(text, 'user');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'text', text: text }));
+        }
+        CHAT_INPUT.value = '';
+    }
+
+    function stopCall() {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        if (audioContext && audioContext.state !== 'closed') audioContext.close();
+        if (ws) ws.close();
+
+        CARD.classList.remove('active');
+        FAB.style.display = 'flex';
+        if (FAB_AVATAR) FAB_AVATAR.style.display = 'flex';
+        responseQueue = [];
+        isPlaying = false;
+        STATUS_TEXT.textContent = "Voice AI Assistant";
+    }
+
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    }
+
+    // Event Listeners
+    FAB.addEventListener('click', initCall);
+    if (FAB_AVATAR) FAB_AVATAR.addEventListener('click', initCall);
+    STOP_BTN.addEventListener('click', stopCall);
+    SEND_BTN.addEventListener('click', sendTextMessage);
+    CHAT_INPUT.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendTextMessage();
+    });
+
+})();
+</script>
