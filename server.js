@@ -39,12 +39,7 @@ if (!process.env.MS_USER_EMAIL) {
     console.log("System configured to manage calendar for:", process.env.MS_USER_EMAIL);
 }
 
-const getSystemInstructions = () => {
-    const today = new Date().toLocaleDateString('en-US', {
-        timeZone: 'America/New_York',
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-    return `
+const SYSTEM_INSTRUCTIONS = `
 You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments.
 You have access to a Microsoft Outlook calendar. 
 - When asked for availability, use the 'checkAvailability' tool.
@@ -55,7 +50,7 @@ IMPORTANT RULES:
 - We ONLY do outcall appointments (we go to the customer).
 - You MUST ask for the customer's ADDRESS before booking an appointment.
 - Operating Hours are 8:00 AM to 5:00 PM (EST), Monday to Friday.
-- TIMEZONE: You are operating in Naples, FL (EST/EDT). When checking availability, compare the user's requested time against the 'busyBlocks' provided.
+- TIMEZONE: You are operating in Naples, FL (EST).
 - PERSONALITY: Be energetic, friendly, and "real". Use natural language, contractions (don't, can't), and sound like a helpful human assistant. Show enthusiasm for renovations!
 - KNOWLEDGE BASE: You are the AI for "GC Pro West Renovation Center".
     - Location: 5746 Woodmere Lake Cir, Naples, FL 34112.
@@ -64,9 +59,7 @@ IMPORTANT RULES:
     - Contact: 239-307-8020, info@gcprowest.com.
 - GUARDRAILS: You must ONLY answer questions about GC Pro West services and appointments.
 IMPORTANT: Do NOT write Python code. Return valid Tool/Function calls.
-Today's date is: ${today}.
 `;
-};
 
 const msalConfig = {
     auth: {
@@ -113,11 +106,7 @@ async function checkAvailabilityLogic(date) {
         };
     });
 
-    const todayFormatted = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
     return {
-        _SYSTEM_MESSAGE_: `Today's current date is ${todayFormatted}. Use this to interpret "tomorrow" or "next week".`,
-        today: todayFormatted,
         dateChecked: dateArg,
         timezone: "EST (Naples, FL)",
         message: `Found ${events.value.length} appointments for this date.`,
@@ -151,7 +140,7 @@ async function bookAppointmentLogic(args) {
         const response = await client.api(`/users/${process.env.MS_USER_EMAIL}/events`).post(event);
         console.log("OUTLOOK BOOKING SUCCESS:", response.id);
 
-        // --- NEW: Automatic Email Confirmation ---
+        // --- Automatic Email Confirmation ---
         try {
             const mail = {
                 message: {
@@ -194,21 +183,6 @@ app.post('/webhook', async (req, res) => {
 
     const message = req.body.message;
     if (!message) return res.status(200).json({ status: "ignored" });
-
-    // Handle Assistant Request (Dynamic Date Injection)
-    if (message.type === 'assistant-request' || message.type === 'conversation-start' || message.type === 'vapi-request') {
-        const fullInstructions = getSystemInstructions();
-        console.log("VAPI REQUEST RECEIVED (type: " + message.type + "). Injecting dynamic date/instructions.");
-        return res.status(200).json({
-            assistant: {
-                model: {
-                    messages: [
-                        { role: "system", content: fullInstructions }
-                    ]
-                }
-            }
-        });
-    }
 
     if (message.type === 'tool-calls') {
         const toolCalls = message.toolCalls;
@@ -254,17 +228,6 @@ app.post('/webhook', async (req, res) => {
     return res.status(200).json({ status: "ignored" });
 });
 
-// --- Diagnostic Endpoint ---
-app.get('/debug', (req, res) => {
-    const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    res.json({
-        server_local_time: new Date().toISOString(),
-        est_naples_time: today,
-        ms_user: process.env.MS_USER_EMAIL || "MISSING",
-        ms_tenant: process.env.MS_TENANT_ID ? "PRESENT" : "MISSING"
-    });
-});
-
 // --- Existing Browser Widget (WebSocket) Logic ---
 
 app.use(express.static(path.join(__dirname, 'frontend')));
@@ -300,7 +263,7 @@ wss.on('connection', (ws_client) => {
                     }
                 },
                 systemInstruction: {
-                    parts: [{ text: getSystemInstructions() }]
+                    parts: [{ text: SYSTEM_INSTRUCTIONS }]
                 },
                 tools: [{
                     functionDeclarations: [
