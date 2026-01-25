@@ -33,6 +33,11 @@ if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET) {
     console.warn("CRITICAL ERROR: Microsoft credentials (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET) are missing from Environment Variables.");
     console.warn("Make sure these are added to the Render Environment settings.");
 }
+if (!process.env.MS_USER_EMAIL) {
+    console.warn("CRITICAL ERROR: MS_USER_EMAIL is missing. Booking will fail.");
+} else {
+    console.log("System configured to manage calendar for:", process.env.MS_USER_EMAIL);
+}
 
 const msalConfig = {
     auth: {
@@ -98,8 +103,15 @@ async function bookAppointmentLogic(args) {
         location: { displayName: address }
     };
 
-    await client.api(`/users/${process.env.MS_USER_EMAIL}/events`).post(event);
-    return { status: "confirmed", system: "Microsoft Outlook" };
+    try {
+        const response = await client.api(`/users/${process.env.MS_USER_EMAIL}/events`).post(event);
+        console.log("OUTLOOK BOOKING SUCCESS:", response.id);
+        return { status: "confirmed", system: "Microsoft Outlook", id: response.id };
+    } catch (err) {
+        console.error("OUTLOOK BOOKING ERROR:", err.message);
+        if (err.body) console.error("Error Body:", err.body);
+        throw err;
+    }
 }
 
 // --- Vapi Webhook Endpoint ---
@@ -118,19 +130,32 @@ app.post('/webhook', async (req, res) => {
     for (const toolCall of toolCalls) {
         let result = {};
         try {
-            if (toolCall.function.name === 'checkAvailability') {
-                result = await checkAvailabilityLogic(toolCall.function.arguments.date);
-            } else if (toolCall.function.name === 'bookAppointment') {
-                result = await bookAppointmentLogic(toolCall.function.arguments);
+            const funcName = toolCall.function.name;
+            let args = toolCall.function.arguments;
+
+            // Robustness: Parse arguments if they come as a string (Vapi/OpenAI standard)
+            if (typeof args === 'string') {
+                try {
+                    args = JSON.parse(args);
+                } catch (pe) {
+                    console.error("Failed to parse arguments string:", args);
+                }
             }
+
+            console.log(`EXECUTING TOOL: ${funcName}`, args);
+
+            if (funcName === 'checkAvailability') {
+                result = await checkAvailabilityLogic(args.date);
+            } else if (funcName === 'bookAppointment') {
+                result = await bookAppointmentLogic(args);
+            }
+
             results.push({
                 toolCallId: toolCall.id,
                 result: JSON.stringify(result)
             });
         } catch (error) {
             console.error("VAPI TOOL ERROR:", error.message);
-            // Vapi expects a 'result' string even if it contains an error message, 
-            // or an 'error' field but with a successful 200 status.
             results.push({
                 toolCallId: toolCall.id,
                 result: JSON.stringify({ error: error.message })
