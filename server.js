@@ -55,9 +55,12 @@ async function getGraphClient() {
 // --- Shared Core Logic (Reused by Widget and Vapi) ---
 
 async function checkAvailabilityLogic(date) {
-    console.log("Checking Outlook availability for:", date);
+    console.log("Checking Outlook availability for input:", date);
+    // Sanitize: take only YYYY-MM-DD even if full ISO string is provided
+    const dateArg = (date && typeof date === 'string') ? date.split('T')[0] : new Date().toISOString().split('T')[0];
+
+    console.log("Sanitized dateArg:", dateArg);
     const client = await getGraphClient();
-    const dateArg = date || new Date().toISOString().split('T')[0];
     const startDateTime = `${dateArg}T08:00:00Z`;
     const endDateTime = `${dateArg}T17:00:00Z`;
 
@@ -76,9 +79,12 @@ async function checkAvailabilityLogic(date) {
 async function bookAppointmentLogic(args) {
     const { date, time, name, phone, address } = args;
     console.log("Booking Outlook appointment for:", name);
-    const client = await getGraphClient();
 
-    const startTime = new Date(`${date} ${time}`);
+    // Sanitize date for booking as well
+    const sanitizedDate = (date && typeof date === 'string') ? date.split('T')[0] : new Date().toISOString().split('T')[0];
+
+    const client = await getGraphClient();
+    const startTime = new Date(`${sanitizedDate} ${time}`);
     const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
 
     const event = {
@@ -123,9 +129,11 @@ app.post('/webhook', async (req, res) => {
             });
         } catch (error) {
             console.error("VAPI TOOL ERROR:", error.message);
+            // Vapi expects a 'result' string even if it contains an error message, 
+            // or an 'error' field but with a successful 200 status.
             results.push({
                 toolCallId: toolCall.id,
-                error: error.message
+                result: JSON.stringify({ error: error.message })
             });
         }
     }
