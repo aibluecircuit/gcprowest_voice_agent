@@ -113,8 +113,11 @@ async function checkAvailabilityLogic(date) {
         };
     });
 
+    const todayFormatted = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
     return {
-        today: new Date().toISOString().split('T')[0],
+        _SYSTEM_MESSAGE_: `Today's current date is ${todayFormatted}. Use this to interpret "tomorrow" or "next week".`,
+        today: todayFormatted,
         dateChecked: dateArg,
         timezone: "EST (Naples, FL)",
         message: `Found ${events.value.length} appointments for this date.`,
@@ -193,67 +196,73 @@ app.post('/webhook', async (req, res) => {
     if (!message) return res.status(200).json({ status: "ignored" });
 
     // Handle Assistant Request (Dynamic Date Injection)
-    if (message.type === 'assistant-request' || message.type === 'conversation-start') {
+    if (message.type === 'assistant-request' || message.type === 'conversation-start' || message.type === 'vapi-request') {
         const fullInstructions = getSystemInstructions();
-        console.log("DYNAMIC DATE INJECTION FOR VAPI:", fullInstructions.split('Today\'s date is: ')[1]);
+        console.log("VAPI REQUEST RECEIVED (type: " + message.type + "). Injecting dynamic date/instructions.");
         return res.status(200).json({
             assistant: {
                 model: {
                     messages: [
-                        {
-                            role: "system",
-                            content: fullInstructions
-                        }
+                        { role: "system", content: fullInstructions }
                     ]
                 }
             }
         });
     }
 
-    if (message.type !== 'tool-calls') {
-        return res.status(200).json({ status: "ignored" });
-    }
+    if (message.type === 'tool-calls') {
+        const toolCalls = message.toolCalls;
+        const results = [];
 
-    const toolCalls = message.toolCalls;
-    const results = [];
+        for (const toolCall of toolCalls) {
+            let result = {};
+            try {
+                const funcName = toolCall.function.name;
+                let args = toolCall.function.arguments;
 
-    for (const toolCall of toolCalls) {
-        let result = {};
-        try {
-            const funcName = toolCall.function.name;
-            let args = toolCall.function.arguments;
-
-            // Robustness: Parse arguments if they come as a string (Vapi/OpenAI standard)
-            if (typeof args === 'string') {
-                try {
-                    args = JSON.parse(args);
-                } catch (pe) {
-                    console.error("Failed to parse arguments string:", args);
+                if (typeof args === 'string') {
+                    try {
+                        args = JSON.parse(args);
+                    } catch (pe) {
+                        console.error("Failed to parse arguments string:", args);
+                    }
                 }
+
+                console.log(`EXECUTING TOOL: ${funcName}`, args);
+
+                if (funcName === 'checkAvailability') {
+                    result = await checkAvailabilityLogic(args.date);
+                } else if (funcName === 'bookAppointment') {
+                    result = await bookAppointmentLogic(args);
+                }
+
+                results.push({
+                    toolCallId: toolCall.id,
+                    result: JSON.stringify(result)
+                });
+            } catch (error) {
+                console.error("VAPI TOOL ERROR:", error.message);
+                results.push({
+                    toolCallId: toolCall.id,
+                    result: JSON.stringify({ error: error.message })
+                });
             }
-
-            console.log(`EXECUTING TOOL: ${funcName}`, args);
-
-            if (funcName === 'checkAvailability') {
-                result = await checkAvailabilityLogic(args.date);
-            } else if (funcName === 'bookAppointment') {
-                result = await bookAppointmentLogic(args);
-            }
-
-            results.push({
-                toolCallId: toolCall.id,
-                result: JSON.stringify(result)
-            });
-        } catch (error) {
-            console.error("VAPI TOOL ERROR:", error.message);
-            results.push({
-                toolCallId: toolCall.id,
-                result: JSON.stringify({ error: error.message })
-            });
         }
+        return res.status(200).json({ results });
     }
 
-    res.status(200).json({ results });
+    return res.status(200).json({ status: "ignored" });
+});
+
+// --- Diagnostic Endpoint ---
+app.get('/debug', (req, res) => {
+    const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    res.json({
+        server_local_time: new Date().toISOString(),
+        est_naples_time: today,
+        ms_user: process.env.MS_USER_EMAIL || "MISSING",
+        ms_tenant: process.env.MS_TENANT_ID ? "PRESENT" : "MISSING"
+    });
 });
 
 // --- Existing Browser Widget (WebSocket) Logic ---
