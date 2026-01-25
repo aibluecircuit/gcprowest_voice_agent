@@ -39,7 +39,12 @@ if (!process.env.MS_USER_EMAIL) {
     console.log("System configured to manage calendar for:", process.env.MS_USER_EMAIL);
 }
 
-const SYSTEM_INSTRUCTIONS = `
+const getSystemInstructions = () => {
+    const today = new Date().toLocaleDateString('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    return `
 You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments.
 You have access to a Microsoft Outlook calendar. 
 - When asked for availability, use the 'checkAvailability' tool.
@@ -59,8 +64,9 @@ IMPORTANT RULES:
     - Contact: 239-307-8020, info@gcprowest.com.
 - GUARDRAILS: You must ONLY answer questions about GC Pro West services and appointments.
 IMPORTANT: Do NOT write Python code. Return valid Tool/Function calls.
-Today's date is: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
+Today's date is: ${today}.
 `;
+};
 
 const msalConfig = {
     auth: {
@@ -188,13 +194,15 @@ app.post('/webhook', async (req, res) => {
 
     // Handle Assistant Request (Dynamic Date Injection)
     if (message.type === 'assistant-request' || message.type === 'conversation-start') {
+        const fullInstructions = getSystemInstructions();
+        console.log("DYNAMIC DATE INJECTION FOR VAPI:", fullInstructions.split('Today\'s date is: ')[1]);
         return res.status(200).json({
             assistant: {
                 model: {
                     messages: [
                         {
                             role: "system",
-                            content: SYSTEM_INSTRUCTIONS
+                            content: fullInstructions
                         }
                     ]
                 }
@@ -283,7 +291,7 @@ wss.on('connection', (ws_client) => {
                     }
                 },
                 systemInstruction: {
-                    parts: [{ text: SYSTEM_INSTRUCTIONS }]
+                    parts: [{ text: getSystemInstructions() }]
                 },
                 tools: [{
                     functionDeclarations: [
