@@ -39,6 +39,29 @@ if (!process.env.MS_USER_EMAIL) {
     console.log("System configured to manage calendar for:", process.env.MS_USER_EMAIL);
 }
 
+const SYSTEM_INSTRUCTIONS = `
+You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments.
+You have access to a Microsoft Outlook calendar. 
+- When asked for availability, use the 'checkAvailability' tool.
+- When the user confirms a time, use the 'bookAppointment' tool.
+- NOTIFICATIONS: You automatically send an Email confirmation via Outlook immediately after booking.
+Always confirm the details before booking.
+IMPORTANT RULES:
+- We ONLY do outcall appointments (we go to the customer).
+- You MUST ask for the customer's ADDRESS before booking an appointment.
+- Operating Hours are 8:00 AM to 5:00 PM (EST), Monday to Friday.
+- TIMEZONE: You are operating in Naples, FL (EST/EDT). When checking availability, compare the user's requested time against the 'busyBlocks' provided.
+- PERSONALITY: Be energetic, friendly, and "real". Use natural language, contractions (don't, can't), and sound like a helpful human assistant. Show enthusiasm for renovations!
+- KNOWLEDGE BASE: You are the AI for "GC Pro West Renovation Center".
+    - Location: 5746 Woodmere Lake Cir, Naples, FL 34112.
+    - Service Areas: Naples and Marco Island.
+    - Services: High-end renovations, custom kitchen remodels, luxury bathroom upgrades, cabinets.
+    - Contact: 239-307-8020, info@gcprowest.com.
+- GUARDRAILS: You must ONLY answer questions about GC Pro West services and appointments.
+IMPORTANT: Do NOT write Python code. Return valid Tool/Function calls.
+Today's date is: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
+`;
+
 const msalConfig = {
     auth: {
         clientId: MS_CLIENT_ID || "MISSING",
@@ -118,7 +141,36 @@ async function bookAppointmentLogic(args) {
     try {
         const response = await client.api(`/users/${process.env.MS_USER_EMAIL}/events`).post(event);
         console.log("OUTLOOK BOOKING SUCCESS:", response.id);
-        return { status: "confirmed", system: "Microsoft Outlook", id: response.id };
+
+        // --- NEW: Automatic Email Confirmation ---
+        try {
+            const mail = {
+                message: {
+                    subject: `Appointment Confirmed: GC Pro West Renovation`,
+                    body: {
+                        contentType: 'HTML',
+                        content: `
+                            <h2>Hi ${name},</h2>
+                            <p>Your renovation consultation with GC Pro West is confirmed!</p>
+                            <p><b>Date:</b> ${sanitizedDate}<br>
+                            <b>Time:</b> ${time}<br>
+                            <b>Address:</b> ${address}</p>
+                            <p>We look forward to seeing you then!</p>
+                            <hr>
+                            <p><i>GC Pro West Renovation Center</i><br>239-307-8020</p>
+                        `
+                    },
+                    toRecipients: [{ emailAddress: { address: process.env.MS_USER_EMAIL } }] // Sending to user email as fallback/copy
+                },
+                saveToSentItems: "true"
+            };
+            await client.api(`/users/${process.env.MS_USER_EMAIL}/sendMail`).post(mail);
+            console.log("CONFIRMATION EMAIL SENT");
+        } catch (mailErr) {
+            console.error("FAILED TO SEND EMAIL:", mailErr.message);
+        }
+
+        return { status: "confirmed", system: "Microsoft Outlook", id: response.id, message: "Appointment booked and confirmation email sent." };
     } catch (err) {
         console.error("OUTLOOK BOOKING ERROR:", err.message);
         if (err.body) console.error("Error Body:", err.body);
@@ -136,15 +188,13 @@ app.post('/webhook', async (req, res) => {
 
     // Handle Assistant Request (Dynamic Date Injection)
     if (message.type === 'assistant-request' || message.type === 'conversation-start') {
-        const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        console.log("DYNAMIC DATE INJECTION FOR VAPI:", today);
         return res.status(200).json({
             assistant: {
                 model: {
                     messages: [
                         {
                             role: "system",
-                            content: `Today's date is: ${today}. You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments. Use the tools provided to check availability and book.`
+                            content: SYSTEM_INSTRUCTIONS
                         }
                     ]
                 }
@@ -233,29 +283,7 @@ wss.on('connection', (ws_client) => {
                     }
                 },
                 systemInstruction: {
-                    parts: [{
-                        text: `
-You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments.
-You have access to a Microsoft Outlook calendar. 
-- When asked for availability, use the 'checkAvailability' tool.
-- When the user confirms a time, use the 'bookAppointment' tool.
-- NOTIFICATIONS: You automatically send an Email confirmation via Outlook immediately after booking.
-Always confirm the details before booking.
-IMPORTANT RULES:
-- We ONLY do outcall appointments (we go to the customer).
-- You MUST ask for the customer's ADDRESS before booking an appointment.
-- Operating Hours are 8:00 AM to 5:00 PM (EST), Monday to Friday.
-- TIMEZONE: You are operating in Naples, FL (EST/EDT). When checking availability, compare the user's requested time against the 'busyBlocks' provided.
-- PERSONALITY: Be energetic, friendly, and "real". Use natural language, contractions (don't, can't), and sound like a helpful human assistant. Show enthusiasm for renovations!
-- KNOWLEDGE BASE: You are the AI for "GC Pro West Renovation Center".
-    - Location: 5746 Woodmere Lake Cir, Naples, FL 34112.
-    - Service Areas: Naples and Marco Island.
-    - Services: High-end renovations, custom kitchen remodels, luxury bathroom upgrades, cabinets.
-    - Contact: 239-307-8020, info@gcprowest.com.
-- GUARDRAILS: You must ONLY answer questions about GC Pro West services and appointments.
-IMPORTANT: Do NOT write Python code. Return valid "functionCall" objects.
-Today's date is ${new Date().toISOString().split('T')[0]}.
-` }]
+                    parts: [{ text: SYSTEM_INSTRUCTIONS }]
                 },
                 tools: [{
                     functionDeclarations: [
