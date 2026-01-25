@@ -176,6 +176,28 @@ async function bookAppointmentLogic(args) {
     }
 }
 
+async function getCurrentTimeLogic() {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+    });
+    const estTime = formatter.format(now);
+    console.log("Current Time Requested (EST):", estTime);
+    return {
+        currentTime: estTime,
+        timezone: "EST (Naples, FL)",
+        message: `The current time in Naples, FL is ${estTime}.`
+    };
+}
+
 // --- Vapi Webhook Endpoint ---
 
 app.post('/webhook', async (req, res) => {
@@ -208,6 +230,8 @@ app.post('/webhook', async (req, res) => {
                     result = await checkAvailabilityLogic(args.date);
                 } else if (funcName === 'bookAppointment') {
                     result = await bookAppointmentLogic(args);
+                } else if (funcName === 'getCurrentTime') {
+                    result = await getCurrentTimeLogic();
                 }
 
                 results.push({
@@ -267,6 +291,11 @@ wss.on('connection', (ws_client) => {
                 },
                 tools: [{
                     functionDeclarations: [
+                        {
+                            name: "getCurrentTime",
+                            description: "Get the current time in Naples, FL (EST). Use this to know what time it is right now.",
+                            parameters: { type: "OBJECT", properties: {} }
+                        },
                         {
                             name: "checkAvailability",
                             description: "Check if a specific date is available for an appointment in Outlook.",
@@ -342,6 +371,8 @@ wss.on('connection', (ws_client) => {
                     } else if (functionCall.name === "bookAppointment") {
                         ws_client.send(JSON.stringify({ type: 'text', text: '📅 Booking appointment in Outlook...' }));
                         result = await bookAppointmentLogic(functionCall.args);
+                    } else if (functionCall.name === "getCurrentTime") {
+                        result = await getCurrentTimeLogic();
                     }
                 } catch (error) {
                     console.error("WIDGET TOOL ERROR:", error.message);
