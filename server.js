@@ -85,7 +85,8 @@ async function checkAvailabilityLogic(date) {
     });
 
     return {
-        date: dateArg,
+        today: new Date().toISOString().split('T')[0],
+        dateChecked: dateArg,
         timezone: "EST (Naples, FL)",
         message: `Found ${events.value.length} appointments for this date.`,
         busyBlocks: busyBlocks
