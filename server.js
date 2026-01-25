@@ -132,7 +132,27 @@ app.post('/webhook', async (req, res) => {
     console.log("RECEIVED VAPI WEBHOOK:", JSON.stringify(req.body, null, 2));
 
     const message = req.body.message;
-    if (!message || message.type !== 'tool-calls') {
+    if (!message) return res.status(200).json({ status: "ignored" });
+
+    // Handle Assistant Request (Dynamic Date Injection)
+    if (message.type === 'assistant-request' || message.type === 'conversation-start') {
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        console.log("DYNAMIC DATE INJECTION FOR VAPI:", today);
+        return res.status(200).json({
+            assistant: {
+                model: {
+                    messages: [
+                        {
+                            role: "system",
+                            content: `Today's date is: ${today}. You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments. Use the tools provided to check availability and book.`
+                        }
+                    ]
+                }
+            }
+        });
+    }
+
+    if (message.type !== 'tool-calls') {
         return res.status(200).json({ status: "ignored" });
     }
 
