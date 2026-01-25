@@ -66,18 +66,29 @@ async function checkAvailabilityLogic(date) {
 
     console.log("Sanitized dateArg:", dateArg);
     const client = await getGraphClient();
-    const startDateTime = `${dateArg}T08:00:00Z`;
-    const endDateTime = `${dateArg}T17:00:00Z`;
+    // Query the ENTIRE day in UTC to ensure no timezone gaps
+    const startDateTime = `${dateArg}T00:00:00Z`;
+    const endDateTime = `${dateArg}T23:59:59Z`;
 
     const events = await client.api(`/users/${process.env.MS_USER_EMAIL}/calendarView`)
         .query({ startDateTime, endDateTime })
         .select('start,end,subject')
         .get();
 
-    const busyTimes = events.value.map(event => event.start.dateTime.split('T')[1].substring(0, 5));
+    // Map to a cleaner format showing both start and end times
+    const busyBlocks = events.value.map(event => {
+        return {
+            start: event.start.dateTime.split('T')[1].substring(0, 5),
+            end: event.end.dateTime.split('T')[1].substring(0, 5),
+            subject: event.subject
+        };
+    });
+
     return {
-        message: `Found ${events.value.length} appointments.`,
-        busyTimes: busyTimes
+        date: dateArg,
+        timezone: "EST (Naples, FL)",
+        message: `Found ${events.value.length} appointments for this date.`,
+        busyBlocks: busyBlocks
     };
 }
 
@@ -213,6 +224,7 @@ IMPORTANT RULES:
 - We ONLY do outcall appointments (we go to the customer).
 - You MUST ask for the customer's ADDRESS before booking an appointment.
 - Operating Hours are 8:00 AM to 5:00 PM (EST), Monday to Friday.
+- TIMEZONE: You are operating in Naples, FL (EST/EDT). When checking availability, compare the user's requested time against the 'busyBlocks' provided.
 - PERSONALITY: Be energetic, friendly, and "real". Use natural language, contractions (don't, can't), and sound like a helpful human assistant. Show enthusiasm for renovations!
 - KNOWLEDGE BASE: You are the AI for "GC Pro West Renovation Center".
     - Location: 5746 Woodmere Lake Cir, Naples, FL 34112.
