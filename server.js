@@ -3,7 +3,10 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-require('dotenv').config({ path: path.join(__dirname, 'backend', '.env') });
+
+// Look for .env in current directory or root
+require('dotenv').config();
+
 const { ConfidentialClientApplication } = require('@azure/msal-node');
 const { Client } = require('@microsoft/microsoft-graph-client');
 require('isomorphic-fetch');
@@ -11,7 +14,7 @@ require('isomorphic-fetch');
 const cors = require('cors');
 const app = express();
 app.use(cors());
-app.use(express.json()); // Essential for Vapi webhooks
+app.use(express.json());
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -21,16 +24,21 @@ const MODEL = "models/gemini-2.0-flash-exp";
 const HOST = "generativelanguage.googleapis.com";
 const API_KEY = process.env.GOOGLE_API_KEY;
 
-if (!API_KEY) {
-    console.warn("WARNING: GOOGLE_API_KEY is not set in .env");
+// Fail gracefully if MS credentials are missing (Render environment variables)
+const MS_TENANT_ID = process.env.MS_TENANT_ID;
+const MS_CLIENT_ID = process.env.MS_CLIENT_ID;
+const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET;
+
+if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET) {
+    console.warn("CRITICAL ERROR: Microsoft credentials (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET) are missing from Environment Variables.");
+    console.warn("Make sure these are added to the Render Environment settings.");
 }
 
-// --- Microsoft Graph Configuration ---
 const msalConfig = {
     auth: {
-        clientId: process.env.MS_CLIENT_ID,
-        authority: `https://login.microsoftonline.com/${process.env.MS_TENANT_ID}`,
-        clientSecret: process.env.MS_CLIENT_SECRET,
+        clientId: MS_CLIENT_ID || "MISSING",
+        authority: `https://login.microsoftonline.com/${MS_TENANT_ID || 'common'}`,
+        clientSecret: MS_CLIENT_SECRET || "MISSING",
     }
 };
 
