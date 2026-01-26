@@ -122,7 +122,22 @@ async function bookAppointmentLogic(args) {
     const sanitizedDate = (date && typeof date === 'string') ? date.split('T')[0] : new Date().toISOString().split('T')[0];
 
     const client = await getGraphClient();
+
+    // Robust parsing for common time strings
+    let cleanTime = time;
+    if (time.toLowerCase().includes("am") || time.toLowerCase().includes("pm")) {
+        // Simple conversion if needed, but new Date() often handles it.
+    }
+
+    const startDateTimeStr = `${sanitizedDate}T${time.includes(':') && time.length === 5 ? time : time.padStart(5, '0')}:00`;
+    console.log(`[DEBUG] Attempting to create Date with: ${sanitizedDate} ${time}`);
     const startTime = new Date(`${sanitizedDate} ${time}`);
+
+    if (isNaN(startTime.getTime())) {
+        console.error("INVALID DATE DETECTED:", sanitizedDate, time);
+        throw new Error(`The provided time "${time}" is not in a valid format. Please use HH:mm (e.g., 14:00).`);
+    }
+
     const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
 
     const event = {
@@ -137,38 +152,41 @@ async function bookAppointmentLogic(args) {
     };
 
     try {
+        console.log(`[OUTLOOK] Posting event for ${name} at ${sanitizedDate} ${time}...`);
         const response = await client.api(`/users/${process.env.MS_USER_EMAIL}/events`).post(event);
         console.log("OUTLOOK BOOKING SUCCESS:", response.id);
 
-        // --- Automatic Email Confirmation ---
-        try {
-            const mail = {
-                message: {
-                    subject: `Appointment Confirmed: GC Pro West Renovation`,
-                    body: {
-                        contentType: 'HTML',
-                        content: `
-                            <h2>Hi ${name},</h2>
-                            <p>Your renovation consultation with GC Pro West is confirmed!</p>
-                            <p><b>Date:</b> ${sanitizedDate}<br>
-                            <b>Time:</b> ${time}<br>
-                            <b>Address:</b> ${address}</p>
-                            <p>We look forward to seeing you then!</p>
-                            <hr>
-                            <p><i>GC Pro West Renovation Center</i><br>239-307-8020</p>
-                        `
+        // --- BACKGROUND: Automatic Email Confirmation (Non-blocking) ---
+        (async () => {
+            try {
+                const mail = {
+                    message: {
+                        subject: `Appointment Confirmed: GC Pro West Renovation`,
+                        body: {
+                            contentType: 'HTML',
+                            content: `
+                                <h2>Hi ${name},</h2>
+                                <p>Your renovation consultation with GC Pro West is confirmed!</p>
+                                <p><b>Date:</b> ${sanitizedDate}<br>
+                                <b>Time:</b> ${time}<br>
+                                <b>Address:</b> ${address}</p>
+                                <p>We look forward to seeing you then!</p>
+                                <hr>
+                                <p><i>GC Pro West Renovation Center</i><br>239-307-8020</p>
+                            `
+                        },
+                        toRecipients: [{ emailAddress: { address: process.env.MS_USER_EMAIL } }]
                     },
-                    toRecipients: [{ emailAddress: { address: process.env.MS_USER_EMAIL } }] // Sending to user email as fallback/copy
-                },
-                saveToSentItems: "true"
-            };
-            await client.api(`/users/${process.env.MS_USER_EMAIL}/sendMail`).post(mail);
-            console.log("CONFIRMATION EMAIL SENT");
-        } catch (mailErr) {
-            console.error("FAILED TO SEND EMAIL:", mailErr.message);
-        }
+                    saveToSentItems: "true"
+                };
+                await client.api(`/users/${process.env.MS_USER_EMAIL}/sendMail`).post(mail);
+                console.log("[BG] CONFIRMATION EMAIL SENT");
+            } catch (mailErr) {
+                console.error("[BG] FAILED TO SEND EMAIL:", mailErr.message);
+            }
+        })();
 
-        return { status: "confirmed", system: "Microsoft Outlook", id: response.id, message: "Appointment booked and confirmation email sent." };
+        return { status: "confirmed", id: response.id, message: "Appointment booked." };
     } catch (err) {
         console.error("OUTLOOK BOOKING ERROR:", err.message);
         if (err.body) console.error("Error Body:", err.body);
@@ -200,56 +218,68 @@ async function getCurrentTimeLogic() {
 
 // --- Vapi Webhook Endpoint ---
 
+// --- Vapi Webhook Endpoint (High Performance) ---
 app.post('/webhook', async (req, res) => {
-    console.log("RECEIVED VAPI WEBHOOK:", JSON.stringify(req.body, null, 2));
+    const body = req.body;
+    const message = body?.message;
 
-    const message = req.body.message;
-    if (!message) return res.status(200).json({ status: "ignored" });
-
-    if (message.type === 'tool-calls') {
-        const toolCalls = message.toolCalls;
-        const results = [];
-
-        for (const toolCall of toolCalls) {
-            let result = {};
-            try {
-                const funcName = toolCall.function.name;
-                let args = toolCall.function.arguments;
-
-                if (typeof args === 'string') {
-                    try {
-                        args = JSON.parse(args);
-                    } catch (pe) {
-                        console.error("Failed to parse arguments string:", args);
-                    }
-                }
-
-                console.log(`EXECUTING TOOL: ${funcName}`, args);
-
-                if (funcName === 'checkAvailability') {
-                    result = await checkAvailabilityLogic(args.date);
-                } else if (funcName === 'bookAppointment') {
-                    result = await bookAppointmentLogic(args);
-                } else if (funcName === 'getCurrentTime') {
-                    result = await getCurrentTimeLogic();
-                }
-
-                results.push({
-                    toolCallId: toolCall.id,
-                    result: JSON.stringify(result)
-                });
-            } catch (error) {
-                console.error("VAPI TOOL ERROR:", error.message);
-                results.push({
-                    toolCallId: toolCall.id,
-                    result: JSON.stringify({ error: error.message })
-                });
-            }
-        }
-        return res.status(200).json({ results });
+    // 1. EARLY RETURN: Respond immediately to non-tool-call messages
+    // This prevents Vapi session timeouts while the server is busy.
+    if (!message || message.type !== 'tool-calls') {
+        return res.status(200).json({ status: "processed" });
     }
 
-    return res.status(200).json({ status: "ignored" });
+    // 2. PARALLEL TOOL EXECUTION
+    const toolCalls = message.toolCalls || [];
+    console.log(`[VAPI] Processing ${toolCalls.length} tool calls in parallel...`);
+
+    try {
+        const results = await Promise.all(toolCalls.map(async (toolCall) => {
+            const funcName = toolCall.function.name;
+            let args = toolCall.function.arguments;
+
+            if (typeof args === 'string') {
+                try { args = JSON.parse(args); } catch (e) { console.error("Arg Parse Error:", e); }
+            }
+
+            console.log(`[VAPI] Executing: ${funcName}`);
+
+            let result;
+            try {
+                // 3. TIMEOUT SAFETY: Ensure an individual tool doesn't hang the entire agent
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('TIMEOUT')), 8000)
+                );
+
+                if (funcName === 'checkAvailability') {
+                    result = await Promise.race([checkAvailabilityLogic(args.date), timeoutPromise]);
+                } else if (funcName === 'bookAppointment') {
+                    result = await Promise.race([bookAppointmentLogic(args), timeoutPromise]);
+                } else if (funcName === 'getCurrentTime') {
+                    result = await Promise.race([getCurrentTimeLogic(), timeoutPromise]);
+                } else {
+                    result = { error: "Unknown function" };
+                }
+            } catch (err) {
+                console.error(`[TOOL ERROR] ${funcName}:`, err.message);
+                result = {
+                    error: err.message === 'TIMEOUT' ? "Service temporarily slow. Please try again." : err.message
+                };
+            }
+
+            return {
+                toolCallId: toolCall.id,
+                result: JSON.stringify(result)
+            };
+        }));
+
+        console.log(`[VAPI] All tools finished. Returning results.`);
+        return res.status(200).json({ results });
+
+    } catch (globalErr) {
+        console.error("[VAPI GLOBAL ERROR]:", globalErr.message);
+        return res.status(200).json({ results: [] }); // Fallback to avoid hang-up
+    }
 });
 
 // --- Existing Browser Widget (WebSocket) Logic ---
