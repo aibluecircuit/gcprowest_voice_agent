@@ -43,7 +43,11 @@ if (!process.env.MS_USER_EMAIL) {
     console.log("System configured to manage calendar for:", process.env.MS_USER_EMAIL);
 }
 
-const SYSTEM_INSTRUCTIONS = `
+const getSystemInstructions = () => {
+    const options = { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const today = new Intl.DateTimeFormat('en-US', options).format(new Date());
+
+    return `
 You are the “GC Pro West AI Receptionist”. Your job is to answer calls, qualify leads, and schedule appointments.
 You have access to a Microsoft Outlook calendar. 
 - When asked for availability, use the 'checkAvailability' tool.
@@ -51,19 +55,18 @@ You have access to a Microsoft Outlook calendar.
 - NOTIFICATIONS: You automatically send an Email confirmation via Outlook immediately after booking.
 Always confirm the details before booking.
 IMPORTANT RULES:
+- TODAY'S DATE: ${today} (Timezone: Naples, FL / EST).
+- DATE AWARENESS: DO NOT ask the user for the current date or time. You already know it. 
+- Use the date above to interpret "today", "tomorrow", or "next week".
 - We ONLY do outcall appointments (we go to the customer).
 - You MUST ask for the customer's ADDRESS before booking an appointment.
 - Operating Hours are 8:00 AM to 5:00 PM (EST), Monday to Friday.
-- TIMEZONE: You are operating in Naples, FL (EST).
-- PERSONALITY: Be energetic, friendly, and "real". Use natural language, contractions (don't, can't), and sound like a helpful human assistant. Show enthusiasm for renovations!
-- KNOWLEDGE BASE: You are the AI for "GC Pro West Renovation Center".
-    - Location: 5746 Woodmere Lake Cir, Naples, FL 34112.
-    - Service Areas: Naples and Marco Island.
-    - Services: High-end renovations, custom kitchen remodels, luxury bathroom upgrades, cabinets.
-    - Contact: 239-307-8020, info@gcprowest.com.
+- PERSONALITY: Be energetic, friendly, and "real". Use natural language and contractions.
+- KNOWLEDGE BASE: GC Pro West Renovation Center. 5746 Woodmere Lake Cir, Naples, FL 34112.
 - GUARDRAILS: You must ONLY answer questions about GC Pro West services and appointments.
 IMPORTANT: Do NOT write Python code. Return valid Tool/Function calls.
 `;
+};
 
 const msalConfig = {
     auth: {
@@ -249,7 +252,21 @@ async function handleOneToolCall(funcName, args) {
 }
 
 app.post('/webhook', async (req, res) => {
-    const message = req.body?.message;
+    const body = req.body;
+    const message = body?.message;
+
+    // Handle Assistant Request / Conversation Start (Dynamic Date Injection for Vapi)
+    if (message?.type === 'assistant-request' || message?.type === 'conversation-start') {
+        const fullInstructions = getSystemInstructions();
+        return res.status(200).json({
+            assistantOverrides: {
+                model: {
+                    messages: [{ role: "system", content: fullInstructions }]
+                }
+            }
+        });
+    }
+
     if (!message || message.type !== 'tool-calls') {
         return res.status(200).json({ status: "processed" });
     }
@@ -302,7 +319,7 @@ wss.on('connection', (ws_client) => {
                     }
                 },
                 systemInstruction: {
-                    parts: [{ text: SYSTEM_INSTRUCTIONS }]
+                    parts: [{ text: getSystemInstructions() }]
                 },
                 tools: [{
                     functionDeclarations: [
