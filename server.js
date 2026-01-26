@@ -20,7 +20,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 8080;
-const MODEL = "models/gemini-2.0-flash"; // Stable 2.0 Flash
+const MODEL = "models/gemini-2.0-flash-exp";
 const HOST = "generativelanguage.googleapis.com";
 const API_KEY = process.env.GOOGLE_API_KEY;
 
@@ -312,6 +312,7 @@ wss.on('connection', (ws_client) => {
 
     let ws_gemini;
     try {
+        console.log(`[WIDGET] Connecting to Gemini Bidi: ${MODEL}`);
         ws_gemini = new WebSocket(url);
     } catch (e) {
         console.error("Failed to connect to Gemini:", e);
@@ -444,7 +445,8 @@ wss.on('connection', (ws_client) => {
                 }
             }
         } catch (e) {
-            console.error("Error parsing Gemini message:", e);
+            console.error("[WIDGET] Error parsing Gemini message:", e);
+            console.error("[WIDGET] Raw Data:", data.toString().substring(0, 500));
         }
     });
 
