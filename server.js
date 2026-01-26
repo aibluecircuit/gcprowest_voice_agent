@@ -374,20 +374,7 @@ wss.on('connection', (ws_client) => {
         };
         ws_gemini.send(JSON.stringify(setupMessage));
 
-        setTimeout(() => {
-            if (ws_gemini.readyState === WebSocket.OPEN) {
-                const initialTrigger = {
-                    clientContent: {
-                        turns: [{
-                            role: "user",
-                            parts: [{ text: "User connected. Say exactly: 'Welcome to GC Pro West Renovation Center. I am a virtual assistant. How can I help you today?'" }]
-                        }],
-                        turnComplete: true
-                    }
-                };
-                ws_gemini.send(JSON.stringify(initialTrigger));
-            }
-        }, 3000);
+        ws_gemini.send(JSON.stringify(setupMessage));
     });
 
     ws_gemini.on('message', async (data) => {
@@ -405,6 +392,20 @@ wss.on('connection', (ws_client) => {
                         break;
                     }
                 }
+            }
+
+            if (response.setupComplete) {
+                console.log("[WIDGET] Setup Complete received. Triggering welcome...");
+                const initialTrigger = {
+                    clientContent: {
+                        turns: [{
+                            role: "user",
+                            parts: [{ text: "User connected. Say exactly: 'Welcome to GC Pro West Renovation Center. I am a virtual assistant. How can I help you today?'" }]
+                        }],
+                        turnComplete: true
+                    }
+                };
+                if (ws_gemini.readyState === WebSocket.OPEN) ws_gemini.send(JSON.stringify(initialTrigger));
             }
 
             if (functionCall) {
@@ -455,7 +456,7 @@ wss.on('connection', (ws_client) => {
             const parsed = JSON.parse(message);
             if (parsed.type === 'audio') {
                 const audioMessage = {
-                    realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm", data: parsed.data }] }
+                    realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: parsed.data }] }
                 };
                 if (ws_gemini.readyState === WebSocket.OPEN) ws_gemini.send(JSON.stringify(audioMessage));
             } else if (parsed.type === 'text') {
