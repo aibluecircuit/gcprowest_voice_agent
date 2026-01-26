@@ -125,7 +125,12 @@ async function checkAvailabilityLogic(date) {
         };
     });
 
+    const options = { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const todayFormatted = new Intl.DateTimeFormat('en-US', options).format(new Date());
+
     return {
+        _SYSTEM_MESSAGE_: `Today's current date is ${todayFormatted}. Use this to interpret "tomorrow" or "next week".`,
+        today: todayFormatted,
         dateChecked: dateArg,
         timezone: "EST (Naples, FL)",
         message: `Found ${events.value.length} appointments for this date.`,
@@ -256,9 +261,17 @@ app.post('/webhook', async (req, res) => {
     const message = body?.message;
 
     // Handle Assistant Request / Conversation Start (Dynamic Date Injection for Vapi)
-    if (message?.type === 'assistant-request' || message?.type === 'conversation-start') {
+    if (message?.type === 'assistant-request' || message?.type === 'conversation-start' || message?.type === 'vapi-request') {
         const fullInstructions = getSystemInstructions();
+        console.log(`[VAPI] Injecting dynamic instructions for message type: ${message.type}`);
+
+        // Return redundant structure for maximum compatibility
         return res.status(200).json({
+            assistant: {
+                model: {
+                    messages: [{ role: "system", content: fullInstructions }]
+                }
+            },
             assistantOverrides: {
                 model: {
                     messages: [{ role: "system", content: fullInstructions }]
