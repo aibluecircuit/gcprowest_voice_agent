@@ -20,9 +20,13 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 8080;
-const MODEL = "models/gemini-2.0-flash-exp";
+const MODEL = "models/gemini-2.0-flash"; // Stable 2.0 Flash
 const HOST = "generativelanguage.googleapis.com";
 const API_KEY = process.env.GOOGLE_API_KEY;
+
+// --- Global Cache for Microsoft Graph ---
+let cachedGraphClient = null;
+let tokenExpiry = 0;
 
 // Fail gracefully if MS credentials are missing (Render environment variables)
 const MS_TENANT_ID = process.env.MS_TENANT_ID;
@@ -72,11 +76,23 @@ const msalConfig = {
 const cca = new ConfidentialClientApplication(msalConfig);
 
 async function getGraphClient() {
+    // Return cached client if it exists and token is likely still valid (Graph tokens last 60m)
+    if (cachedGraphClient && Date.now() < tokenExpiry) {
+        return cachedGraphClient;
+    }
+
+    console.log("[MS GRAPH] Acquiring new access token...");
     const tokenRequest = { scopes: ['https://graph.microsoft.com/.default'] };
     const response = await cca.acquireTokenByClientCredential(tokenRequest);
-    return Client.init({
+
+    // Set expiry to 5 minutes before actual expiry to be safe (response.expiresOn is a Date object)
+    tokenExpiry = new Date(response.expiresOn).getTime() - (5 * 60 * 1000);
+
+    cachedGraphClient = Client.init({
         authProvider: (done) => done(null, response.accessToken)
     });
+
+    return cachedGraphClient;
 }
 
 // --- Shared Core Logic (Reused by Widget and Vapi) ---
@@ -195,91 +211,60 @@ async function bookAppointmentLogic(args) {
 }
 
 async function getCurrentTimeLogic() {
-    const now = new Date();
     const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/New_York',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric'
+        hour: '2-digit', minute: '2-digit', hour12: true,
+        weekday: 'long', month: 'long', day: 'numeric'
     });
-    const estTime = formatter.format(now);
-    console.log("Current Time Requested (EST):", estTime);
+    const estTime = formatter.format(new Date());
     return {
         currentTime: estTime,
-        timezone: "EST (Naples, FL)",
-        message: `The current time in Naples, FL is ${estTime}.`
+        message: `The current time and date in Naples, FL is ${estTime}.`
     };
 }
 
-// --- Vapi Webhook Endpoint ---
+// --- Unified Tool Execution Logic ---
+async function handleOneToolCall(funcName, args) {
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 9000)
+    );
 
-// --- Vapi Webhook Endpoint (High Performance) ---
+    try {
+        console.log(`[EXEC] ${funcName}`, args);
+        let result;
+        if (funcName === 'checkAvailability') {
+            result = await Promise.race([checkAvailabilityLogic(args.date), timeoutPromise]);
+        } else if (funcName === 'bookAppointment') {
+            result = await Promise.race([bookAppointmentLogic(args), timeoutPromise]);
+        } else if (funcName === 'getCurrentTime') {
+            result = await Promise.race([getCurrentTimeLogic(), timeoutPromise]);
+        } else {
+            result = { error: "Unknown function" };
+        }
+        return result;
+    } catch (err) {
+        console.error(`[TOOL ERROR] ${funcName}:`, err.message);
+        return { error: err.message === 'TIMEOUT' ? "Service busy, try again." : err.message };
+    }
+}
+
 app.post('/webhook', async (req, res) => {
-    const body = req.body;
-    const message = body?.message;
-
-    // 1. EARLY RETURN: Respond immediately to non-tool-call messages
-    // This prevents Vapi session timeouts while the server is busy.
+    const message = req.body?.message;
     if (!message || message.type !== 'tool-calls') {
         return res.status(200).json({ status: "processed" });
     }
 
-    // 2. PARALLEL TOOL EXECUTION
     const toolCalls = message.toolCalls || [];
-    console.log(`[VAPI] Processing ${toolCalls.length} tool calls in parallel...`);
+    const results = await Promise.all(toolCalls.map(async (tc) => {
+        const funcName = tc.function.name;
+        let args = tc.function.arguments;
+        if (typeof args === 'string') { try { args = JSON.parse(args); } catch (e) { } }
 
-    try {
-        const results = await Promise.all(toolCalls.map(async (toolCall) => {
-            const funcName = toolCall.function.name;
-            let args = toolCall.function.arguments;
+        const result = await handleOneToolCall(funcName, args);
+        return { toolCallId: tc.id, result: JSON.stringify(result) };
+    }));
 
-            if (typeof args === 'string') {
-                try { args = JSON.parse(args); } catch (e) { console.error("Arg Parse Error:", e); }
-            }
-
-            console.log(`[VAPI] Executing: ${funcName}`);
-
-            let result;
-            try {
-                // 3. TIMEOUT SAFETY: Ensure an individual tool doesn't hang the entire agent
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('TIMEOUT')), 8000)
-                );
-
-                if (funcName === 'checkAvailability') {
-                    result = await Promise.race([checkAvailabilityLogic(args.date), timeoutPromise]);
-                } else if (funcName === 'bookAppointment') {
-                    result = await Promise.race([bookAppointmentLogic(args), timeoutPromise]);
-                } else if (funcName === 'getCurrentTime') {
-                    result = await Promise.race([getCurrentTimeLogic(), timeoutPromise]);
-                } else {
-                    result = { error: "Unknown function" };
-                }
-            } catch (err) {
-                console.error(`[TOOL ERROR] ${funcName}:`, err.message);
-                result = {
-                    error: err.message === 'TIMEOUT' ? "Service temporarily slow. Please try again." : err.message
-                };
-            }
-
-            return {
-                toolCallId: toolCall.id,
-                result: JSON.stringify(result)
-            };
-        }));
-
-        console.log(`[VAPI] All tools finished. Returning results.`);
-        return res.status(200).json({ results });
-
-    } catch (globalErr) {
-        console.error("[VAPI GLOBAL ERROR]:", globalErr.message);
-        return res.status(200).json({ results: [] }); // Fallback to avoid hang-up
-    }
+    return res.status(200).json({ results });
 });
 
 // --- Existing Browser Widget (WebSocket) Logic ---
@@ -392,33 +377,26 @@ wss.on('connection', (ws_client) => {
             }
 
             if (functionCall) {
-                console.log("TOOL CALL:", functionCall.name);
-                let result = {};
-                try {
-                    if (functionCall.name === "checkAvailability") {
-                        ws_client.send(JSON.stringify({ type: 'text', text: '📅 Checking Microsoft Outlook calendar...' }));
-                        result = await checkAvailabilityLogic(functionCall.args.date);
-                    } else if (functionCall.name === "bookAppointment") {
-                        ws_client.send(JSON.stringify({ type: 'text', text: '📅 Booking appointment in Outlook...' }));
-                        result = await bookAppointmentLogic(functionCall.args);
-                    } else if (functionCall.name === "getCurrentTime") {
-                        result = await getCurrentTimeLogic();
-                    }
-                } catch (error) {
-                    console.error("WIDGET TOOL ERROR:", error.message);
-                    result = { error: error.message };
+                const funcName = functionCall.name;
+                const args = functionCall.args || {};
+
+                // Show thinking status in UI
+                if (funcName !== "getCurrentTime") {
+                    ws_client.send(JSON.stringify({ type: 'text', text: `📅 Accessing Outlook for ${funcName}...` }));
                 }
+
+                const result = await handleOneToolCall(funcName, args);
 
                 const toolResponse = {
                     toolResponse: {
                         functionResponses: [{
                             id: functionCall.id,
-                            name: functionCall.name,
+                            name: funcName,
                             response: { result: result }
                         }]
                     }
                 };
-                ws_gemini.send(JSON.stringify(toolResponse));
+                if (ws_gemini.readyState === WebSocket.OPEN) ws_gemini.send(JSON.stringify(toolResponse));
             }
 
             if (response.serverContent && response.serverContent.turnComplete) {
